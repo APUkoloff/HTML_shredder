@@ -1,155 +1,334 @@
-// splitHtmlTextIntoTwoEqualColumnsTrait.php
-<?php
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
 
 /**
- * TCPDF doesn't support to have a 2 columns text where the length of the text is limited and the height of the 2 columns are equal.
- *
- * This trait calculates the middle of the text, split it into 2 parts and returns with them
+ * This function calculates the middle of the text, splits it into 2 parts and returns them
  * Keeps the word boundaries and takes care of the HTML tags too! There is no broken HTML tag after the split.
  */
-trait splitHtmlTextIntoTwoEqualColumnsTrait
+void splitHtmlTextIntoTwoEqualColumns(char* htmlText, char** column1, char** column2)
 {
-    protected function splitHtmlTextIntoTwoEqualColumns(string $htmlText): array
+    // removes unnecessary characters and HTML tags
+    char* temp = str_replace(htmlText, "\xc2\xa0", " ");
+    char* decodedText = html_entity_decode(temp);
+    free(temp);
+    char* pureText = getPureText(decodedText);
+    free(decodedText);
+
+    // calculates the length of the text
+    int fullLength = strlen(pureText);
+    int halfLength = (fullLength + 1) / 2;
+
+    char** words = str_split(pureText, ' ');
+
+    // finds the word which is in the middle of the text
+    int middleWordPosition = getPositionOfMiddleWord(words, halfLength);
+
+    // iterates through the HTML and split the text into 2 parts when it reaches the middle word.
+    char** columns = splitHtmlStringInto2Strings(htmlText, middleWordPosition);
+
+    char** closedColumns = closeUnclosedHtmlTags(columns, halfLength * 2);
+    *column1 = closedColumns[0];
+    *column2 = closedColumns[1];
+
+    free(pureText);
+    free_str_array(words);
+    free_str_array(columns);
+    free(closedColumns);
+}
+
+char* getPureText(char* htmlText)
+{
+    char* pureText = strip_tags(htmlText);
+    char* temp = remove_control_chars(pureText);
+    free(pureText);
+    pureText = str_replace(temp, "\r\n", "");
+    pureText = str_replace(pureText, "\r", "");
+    pureText = str_replace(pureText, "\n", "");
+    free(temp);
+    return pureText;
+}
+
+/**
+ * finds the word which is in the middle of the text
+ */
+int getPositionOfMiddleWord(char** words, int halfLength)
+{
+    int wordPosition = 0;
+    int stringLength = 0;
+    int p;
+    for (p = 0; words[p] != NULL; p++)
     {
-        // removes unnecessary characters and HTML tags
-        $htmlText = str_replace("\xc2\xa0", ' ', $htmlText);
-        $htmlText = html_entity_decode($htmlText);
-        $pureText = $this->getPureText($htmlText);
-
-        // calculates the length of the text
-        $fullLength = strlen($pureText);
-        $halfLength = ceil($fullLength / 2);
-
-        $words = explode(' ', $pureText);
-
-        // finds the word which is in the middle of the text
-        $middleWordPosition = $this->getPositionOfMiddleWord($words, $halfLength);
-
-        // iterates through the HTML and split the text into 2 parts when it reaches the middle word.
-        $columns = $this->splitHtmlStringInto2Strings($htmlText, $middleWordPosition);
-
-        return $this->closeUnclosedHtmlTags($columns, $halfLength * 2);
+        stringLength += strlen(words[p]) + 1;
+        if (stringLength > halfLength)
+        {
+            wordPosition = p;
+            break;
+        }
     }
+    return wordPosition;
+}
 
-    private function getPureText(string $htmlText): string
+char** splitHtmlStringInto2Strings(char* htmlText, int wordPosition)
+{
+    char** columns = (char**)malloc(sizeof(char*) * 3);
+    columns[0] = (char*)calloc(1, sizeof(char));
+    columns[1] = (char*)calloc(1, sizeof(char));
+    columns[2] = NULL;
+    int columnId = 0;
+    int wordCounter = 0;
+    int inHtmlTag = 0;
+    int s;
+    for (s = 0; htmlText[s] != '\0'; s++)
     {
-        $pureText = strip_tags($htmlText);
-        $pureText = preg_replace('/[\x00-\x1F\x7F]/', '', $pureText);
-
-        return str_replace(["\r\n", "\r", "\n"], ['', '', ''], $pureText);
-    }
-
-    /**
-     * finds the word which is in the middle of the text
-     */
-    private function getPositionOfMiddleWord(array $words, int $halfLength): int
-    {
-        $wordPosition = 0;
-        $stringLength = 0;
-        for ($p = 0; $p < count($words); $p++) {
-            $stringLength += mb_strlen($words[$p], 'UTF-8') + 1;
-            if ($stringLength > $halfLength) {
-                $wordPosition = $p;
-                break;
+        if (!inHtmlTag && htmlText[s] == '<')
+        {
+            inHtmlTag = 1;
+        }
+        if (inHtmlTag)
+        {
+            columns[columnId] = str_append(columns[columnId], htmlText[s]);
+            if (htmlText[s] == '>')
+            {
+                inHtmlTag = 0;
             }
         }
-
-        return $wordPosition;
-    }
-
-    /**
-     * iterates through the HTML and split the text into 2 parts when it reaches the middle word.
-     */
-    private function splitHtmlStringInto2Strings(string $htmlText, int $wordPosition): array
-    {
-        $columns = [
-            1 => '',
-            2 => '',
-        ];
-
-        $columnId    = 1;
-        $wordCounter = 0;
-        $inHtmlTag   = false;
-        for ($s = 0; $s <= strlen($htmlText) - 1; $s++) {
-            if ($inHtmlTag === false && $htmlText[$s] === '<') {
-                $inHtmlTag = true;
+        else
+        {
+            if (htmlText[s] == ' ')
+            {
+                wordCounter++;
             }
-
-            if ($inHtmlTag === true) {
-                $columns[$columnId] .= $htmlText[$s];
-                if ($htmlText[$s] === '>') {
-                    $inHtmlTag = false;
-                }
-            } else {
-                if ($htmlText[$s] === ' ') {
-                    $wordCounter++;
-                }
-                if ($wordCounter > $wordPosition && $columnId < 2) {
-                    $columnId++;
-                    $wordCounter = 0;
-                }
-
-                $columns[$columnId] .= $htmlText[$s];
+            if (wordCounter > wordPosition && columnId < 1)
+            {
+                columnId++;
+                wordCounter = 0;
             }
+            columns[columnId] = str_append(columns[columnId], htmlText[s]);
         }
-
-        return array_map('trim', $columns);
     }
+    columns[0] = trim(columns[0]);
+    columns[1] = trim(columns[1]);
+    return columns;
+}
 
-    private function closeUnclosedHtmlTags(array $columns, int $maxLength): array
+char** closeUnclosedHtmlTags(char** columns, int maxLength)
+{
+    char* column1 = columns[0];
+    char** unclosedTags = getUnclosedHtmlTags(column1, maxLength);
+    int i;
+    for (i = 0; unclosedTags[i] != NULL; i++)
     {
-        $column1      = $columns[1];
-        $unclosedTags = $this->getUnclosedHtmlTags($columns[1], $maxLength);
-        foreach (array_reverse($unclosedTags) as $tag) {
-            $column1 .= '</' . $tag . '>';
-        }
-
-        $column2 = '';
-        foreach ($unclosedTags as $tag) {
-            $column2 .= '<' . $tag . '>';
-        }
-        $column2 .= $columns[2];
-
-        return [$column1, $column2];
+        char* closingTag = (char*)malloc(strlen(unclosedTags[i]) + 4);
+        sprintf(closingTag, "</%s>", unclosedTags[i]);
+        column1 = str_append(column1, *closingTag); //*
+        free(closingTag);
     }
-
-    /**
-     * https://stackoverflow.com/a/26175271/5356216
-     */
-    private function getUnclosedHtmlTags(string $html, int $maxLength = 250): array
+    char* column2 = (char*)calloc(1, sizeof(char));
+    for (i = 0; unclosedTags[i] != NULL; i++)
     {
-        $htmlLength = strlen($html);
-        $unclosed   = [];
-        $counter    = 0;
-        $i          = 0;
-        while (($i < $htmlLength) && ($counter < $maxLength)) {
-            if ($html[$i] == "<") {
-                $currentTag = "";
-                $i++;
-                if (($i < $htmlLength) && ($html[$i] != "/")) {
-                    while (($i < $htmlLength) && ($html[$i] != ">") && ($html[$i] != "/")) {
-                        $currentTag .= $html[$i];
-                        $i++;
+        char* openingTag = (char*)malloc(strlen(unclosedTags[i]) + 3);
+        sprintf(openingTag, "<%s>", unclosedTags[i]);
+        column2 = str_append(column2, *openingTag); //*
+        free(openingTag);
+    }
+    column2 = str_append(column2, *columns[1]); //*
+    char** closedColumns = (char**)malloc(sizeof(char*) * 3);
+    closedColumns[0] = column1;
+    closedColumns[1] = column2;
+    closedColumns[2] = NULL;
+    free_str_array(unclosedTags);
+    return closedColumns;
+}
+
+char** getUnclosedHtmlTags(char* html, int maxLength)
+{
+    int htmlLength = strlen(html);
+    char** unclosed = (char**)malloc(sizeof(char*) * (maxLength + 1));
+    int counter = 0;
+    int i = 0;
+    int j = 0;
+    while (i < htmlLength && counter < maxLength)
+    {
+        if (html[i] == '<') {
+            i++;
+            if (i < htmlLength && html[i] != '/')
+            {
+                char* currentTag = (char*)calloc(1, sizeof(char));
+                while (i < htmlLength && html[i] != '>' && html[i] != '/')
+                {
+                    currentTag = str_append(currentTag, html[i]);
+                    i++;
+                }
+                if (html[i] == '/')
+                {
+                    while (i < htmlLength && html[i] != '>')
+                    {
+                        i++;
                     }
-                    if ($html[$i] == "/") {
-                        do {
-                            $i++;
-                        } while (($i < $htmlLength) && ($html[$i] != ">"));
-                    } else {
-                        $currentTag = explode(" ", $currentTag);
-                        $unclosed[] = $currentTag[0];
-                    }
-                } elseif ($html[$i] == "/") {
-                    array_pop($unclosed);
-                    do {
-                        $i++;
-                    } while (($i < $htmlLength) && ($html[$i] != ">"));
                 }
-            } else {
-                $counter++;
+                else
+                {
+                    char** tagParts = str_split(currentTag, ' ');
+                    unclosed[j++] = strdup(tagParts[0]);
+                    free_str_array(tagParts);
+                    free(currentTag);
+                }
             }
-            $i++;
+            else if (html[i] == '/') {
+                i++;
+                while (i < htmlLength && html[i] != '>')
+                {
+                    i++;
+                }
+                j--;
+            }
         }
-        return $unclosed;
+        else
+        {
+            counter++;
+        }
+        i++;
     }
+    unclosed[j] = NULL;
+    return unclosed;
+}
+
+// Helper functions (not included in the original PHP code)
+char* str_replace(char* str, char* oldStr, char* newStr)
+{
+    char* result = strdup(str);
+    char* ins = result;
+    char* tmp = NULL;
+    int len_rem = strlen(str);
+    int len_old = strlen(oldStr);
+    int len_new = strlen(newStr);
+    int count = 0;
+
+    while (len_rem >= len_old)
+    {
+        tmp = strstr(ins, oldStr);
+        if (tmp == NULL)
+        {
+            break;
+        }
+        count++;
+        len_rem -= len_old;
+        tmp += len_old;
+        memmove(ins + len_new, tmp, len_rem + 1);
+        memcpy(ins, newStr, len_new);
+        ins += len_new;
+    }
+
+    return result;
+}
+
+char* html_entity_decode(char* str)
+{
+    // Implementation of html_entity_decode function
+    // ...
+    return str;
+}
+
+char* strip_tags(char* str)
+{
+    // Implementation of strip_tags function
+    // ...
+    return str;
+}
+
+char* remove_control_chars(char* str)
+{
+    char* result = strdup(str);
+    char* d = result;
+    char* s = str;
+    while (*s) {
+        if (isprint(*s))
+        {
+            *d++ = *s;
+        }
+        s++;
+    }
+    *d = '\0';
+    return result;
+}
+
+char** str_split(char* str, char delim)
+{
+    char** result = NULL;
+    char* s = str;
+    int count = 0;
+    char* tmp = NULL;
+
+    while (*s)
+    {
+        if (*s == delim)
+        {
+            count++;
+            *s = '\0';
+        }
+        s++;
+    }
+
+    result = (char**)malloc(sizeof(char*) * (count + 2));
+    s = str;
+    count = 0;
+    while (*s)
+    {
+        tmp = s;
+        s = strchr(s, '\0') + 1;
+        result[count++] = strdup(tmp);
+    }
+    result[count] = NULL;
+
+    return result;
+}
+
+char* str_append(char* str, char c)
+{
+    int len = strlen(str);
+    char* result = (char*)realloc(str, len + 2);
+    result[len] = c;
+    result[len + 1] = '\0';
+    return result;
+}
+
+char* trim(char* str)
+{
+    char* end;
+    while (isspace(*str))
+    {
+        str++;
+    }
+    end = str + strlen(str) - 1;
+    while (end >= str && isspace(*end))
+    {
+        end--;
+    }
+    *(end + 1) = '\0';
+    return strdup(str);
+}
+
+void free_str_array(char** arr)
+{
+    int i;
+    for (i = 0; arr[i] != NULL; i++)
+    {
+        free(arr[i]);
+    }
+    free(arr);
+}
+
+int main()
+{
+    char text[] = "<!-- This is an HTML comment --><p>This is a <b>paragraph</b> with some <i>formatted</i> text.</p>";
+    char* htmlText = text;
+    char* column1, * column2;
+    splitHtmlTextIntoTwoEqualColumns(htmlText, &column1, &column2);
+    printf("Column 1: %s\n", column1);
+    printf("Column 2: %s\n", column2);
+    free(column1);
+    free(column2);
+    return 0;
 }
