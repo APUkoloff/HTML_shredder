@@ -2,11 +2,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-
-/**
- * This function calculates the middle of the text, splits it into 2 parts and returns them
- * Keeps the word boundaries and takes care of the HTML tags too! There is no broken HTML tag after the split.
- */
+ 
+// This function calculates the middle of the text, splits it into 2 parts and returns them
+ // Keeps the word boundaries and takes care of the HTML tags too! There is no broken HTML tag after the split.
 void splitHtmlTextIntoTwoEqualColumns(char* htmlText, char** column1, char** column2)
 {
     // removes unnecessary characters and HTML tags
@@ -49,10 +47,7 @@ char* getPureText(char* htmlText)
     free(temp);
     return pureText;
 }
-
-/**
- * finds the word which is in the middle of the text
- */
+// finds the word which is in the middle of the text
 int getPositionOfMiddleWord(char** words, int halfLength)
 {
     int wordPosition = 0;
@@ -195,7 +190,7 @@ char** getUnclosedHtmlTags(char* html, int maxLength)
     return unclosed;
 }
 
-// Helper functions (not included in the original PHP code)
+// Additional functions
 char* str_replace(char* str, char* oldStr, char* newStr)
 {
     char* result = strdup(str);
@@ -220,7 +215,6 @@ char* str_replace(char* str, char* oldStr, char* newStr)
         memcpy(ins, newStr, len_new);
         ins += len_new;
     }
-
     return result;
 }
 
