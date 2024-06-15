@@ -14,6 +14,7 @@ static int LIMIT = -1;
 static int util_str_index = -1;
 static int size1 = 0;
 static int size2 = 0;
+static int i = 0;
 
 struct Stack
 {
@@ -67,7 +68,7 @@ int html_open_tag_check_part(int offset, int end, char str[], char **picklist) /
     int n = 0;
     for (int j = offset; j < end; j++) 
     {
-        if ((str[j] == '\0') || ('/'))
+        if ((str[j] == '\0') || (str[j] == '/'))
             return 0;
         if ((str[j] == '=')||(str[j]==' ')) // drops links and other from meaningful part
             break;
@@ -280,7 +281,8 @@ int check_piece(int start, FILE *f, int fsize, int LIMIT)
     S1.size = 0;
     S2.size = 0;
     works = 1;
-    int i = start;
+    //int i = start;
+    i = start;
     if (fsize < LIMIT) 
     {
         dump_full_message(f, fsize);
