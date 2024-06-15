@@ -51,13 +51,16 @@ void dump_full_message(FILE* f, int fsize, int start)
     else 
     {
         char* content = (char*)malloc(fsize * sizeof(char));
-        content = content + start;
-        fread(content, sizeof(char), fsize, f);
-        if (content != NULL)
+        if (content != NULL) 
         {
-            puts(content);
+            content = content + start;
+            fread(content, sizeof(char), fsize, f);
+            if (content != NULL)
+            {
+                puts(content);
+            }
+            free(content);
         }
-        free(content);
     }
     fclose(f);
 }
@@ -71,8 +74,8 @@ int html_open_tag_check_part(int offset, int end, char str[], char **picklist) /
     {
         if ((str[j] == '\0') || (str[j] == '/'))
             return 0;
-        if ((str[j] == '=')||(str[j]==' ')) // drops links and other from meaningful part
-            break;
+        if ((str[j] == '=')||(str[j]==' ')) // drops links and other from meaningful part example <a href = "abcd.net"><b>text</b></a> has list of opening tags(<a>,<b>)
+            break;                                      // it is not necessary to check that for closing tags
         picklist[j][n] = str[j];
         n++;
     }
@@ -94,7 +97,7 @@ int html_close_tag_check_part(int offset, int end, char str[], char** picklist) 
     return 1;
 }
 
-int mass_insert_open_tag(int offset, char workable[], int max_len, char** picklist)
+int mass_insert_open_tag(int offset, char workable[], int max_len, char** picklist) // list of opened tags
 {
     int j = offset;
     int n = -1;
@@ -105,7 +108,7 @@ int mass_insert_open_tag(int offset, char workable[], int max_len, char** pickli
         if (workable[j] == '<')
             for (int n = j+1; ((n < strlen(workable)) || (n < max_len)); n++)
             {
-                if ((workable[n] != '/') && (workable[n + 1] == '>'))
+                if ((workable[n] != '/') && (workable[n + 1] == '>')) // not closing tag
                 {
                     n++;
                     html_close_tag_check_part(j, n, workable, picklist);
@@ -118,7 +121,8 @@ int mass_insert_open_tag(int offset, char workable[], int max_len, char** pickli
     return 1;
 }
 
-int mass_insert_close_tag(int offset, char workable[], int max_len, char **picklist) 
+int mass_insert_close_tag(int offset, char workable[], int max_len, char **picklist) //list of tags which are closed (used to keep format of message 
+                                                                                                            //with multiple tag pairs inside each other)
 {
     int j = offset;
     int n = -1;
@@ -210,9 +214,13 @@ int load_piece(int len)
     else
     {
         char* fragment = (char*)malloc(len*sizeof(char)); // that previously saved(with correct HTML text) element of big message
-        fgets(fragment, len, out);
-        puts(fragment); // user-requested output
-        return 1;
+        if (fragment != NULL)
+        {
+            fread(fragment, sizeof(char), len, out);
+            puts(fragment); // user-requested output
+            return 1;
+        }
+        else return 0;
     }
 }
 
@@ -221,7 +229,6 @@ int tag_found(int works, int i, FILE *f, int fsize, char workable[], Stack S, ch
     char tag_open = '<' ; // opening brackets
     char tag_close = '>' ; // closing brackets
     char stack_top;
-    util_str_index = i;
     int tag_open_index = -1;
     int tag_close_index = -1;
     int check1 = 0;
@@ -241,11 +248,17 @@ int tag_found(int works, int i, FILE *f, int fsize, char workable[], Stack S, ch
                 }
                 Push(S, workable[i], max_len); //add to stack - push this char in array inside
                 tag_open_index = i;
-                size1++;
-                if(FUNC_MODE_OPEN)
+                
+                if (FUNC_MODE_OPEN) 
+                {
+                    size1++;
                     realloc((void*)picklist, size1 * sizeof(char*));
-                else
+                }       
+                else 
+                {
+                    size2++;
                     realloc((void*)picklist, size2 * sizeof(char*));
+                }   
                 break;
             }
             if (workable[i] == tag_close) // closing bracket found
@@ -260,7 +273,7 @@ int tag_found(int works, int i, FILE *f, int fsize, char workable[], Stack S, ch
             i++;
         }
         else
-            break;
+           break;
     }
     if (works) 
     {
@@ -333,19 +346,19 @@ int check_piece(int start, FILE *f, int fsize, int max_len)
        start = i;
        
     }
-    while (works && (S1.size == 0) && i<max_len)
+    while (works && (S1.size == 0) && (i<max_len))
     {
+        //Check if both tags were correct
         works = tag_found(works, i, f, fsize, workable, S1, picklist1, FUNC_MODE_OPEN);
         works = tag_found(works, i, f, fsize, workable, S1, picklist2, FUNC_MODE_CLOSE);
         works = compare_tag_lists(picklist1, picklist2, size1, size2);
         if((works)&&(i-start > temp_longest))
-            temp_longest = backup_piece(workable, i-start);
+            temp_longest = backup_piece(workable, i-start); // if string is longer than previous saved it will be stored as backup
         i++;
     }
     if (!works)
     {
-        
-        if (!load_piece(util_str_index - start))
+        if (!load_piece(util_str_index - start)) // no backup string
         {
             printf("no data\n"); //debug
         }
@@ -357,8 +370,6 @@ int check_piece(int start, FILE *f, int fsize, int max_len)
     }
     else
         printf("Not Splittable\n");
-    free(picklist1);
-    free(picklist2);
     return 0;
 }
 
@@ -371,8 +382,10 @@ int msg_split(int max_len)
     fseek(f, 0, SEEK_END);  //find eof
     int fsize = ftell(f) / sizeof(char);
     int res = -1;
-    while((check_piece(start, f, fsize, max_len)!=42) || (start!=EOF)) 
+    start = 0;
+    while((start!=EOF)&&((res!=42)&&(res!=220)&&(res!=0)))
     {
+        res = check_piece(start, f, fsize, max_len);
         if (res == 1) 
         {
             printf("This message length exceeds max_len. Splitted.\n");
